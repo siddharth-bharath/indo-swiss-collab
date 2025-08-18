@@ -281,11 +281,31 @@ CREATE TABLE update_log (
 
 message("\nLoading existing OpenAlex topics hierarchy...")
 topics_con <- dbConnect(RSQLite::SQLite(), topics_db_path)
+
+# Load data and handle timestamp conversion issues
 domains_data <- dbGetQuery(topics_con, "SELECT * FROM domains")
 fields_data <- dbGetQuery(topics_con, "SELECT * FROM fields")
 subfields_data <- dbGetQuery(topics_con, "SELECT * FROM subfields")
 topics_data <- dbGetQuery(topics_con, "SELECT * FROM topics") %>% select(-cited_by_count)
+
 dbDisconnect(topics_con)
+
+# Remove problematic timestamp columns to avoid conversion issues
+timestamp_cols <- c("created_date", "updated_date")
+for (col in timestamp_cols) {
+  if (col %in% names(domains_data)) {
+    domains_data[[col]] <- NULL
+  }
+  if (col %in% names(fields_data)) {
+    fields_data[[col]] <- NULL
+  }
+  if (col %in% names(subfields_data)) {
+    subfields_data[[col]] <- NULL
+  }
+  if (col %in% names(topics_data)) {
+    topics_data[[col]] <- NULL
+  }
+}
 
 # Convert IDs to integer (strip letter prefixes)
 domains_data$domain_id <- strip_id_prefix(domains_data$domain_id, "D")
@@ -643,6 +663,7 @@ JOIN topics t ON wt.topic_id = t.topic_id
 # ===== 10. LOG & SUMMARY =====
 
 update_log <- data.table(
+	update_id = 1L,
 	update_type = "initial_load",
 	start_date = Sys.time(),
 	end_date = Sys.time(),
@@ -653,11 +674,56 @@ update_log <- data.table(
 dbWriteTable(con, "update_log", update_log, append = TRUE)
 
 message("\n=== DATABASE CREATION SUMMARY ===")
-message(paste("Works:", dbGetQuery(con, "SELECT COUNT(*) FROM works")$`COUNT(*)`))
-message(paste("Authors:", dbGetQuery(con, "SELECT COUNT(*) FROM authors")$`COUNT(*)`))
-message(paste("Institutions:", dbGetQuery(con, "SELECT COUNT(*) FROM institutions")$`COUNT(*)`))
-message(paste("Work-Authors:", dbGetQuery(con, "SELECT COUNT(*) FROM work_authors")$`COUNT(*)`))
-message(paste("Work-Institutions:", dbGetQuery(con, "SELECT COUNT(*) FROM work_institutions")$`COUNT(*)`))
-message(paste("Work-Topics:", dbGetQuery(con, "SELECT COUNT(*) FROM work_topics")$`COUNT(*)`))
+
+#Check that the db connection is open
+if (!dbIsValid(con)) {
+	stop("Database connection is not open")
+}
+
+#Open the db connection
+con <- dbConnect(duckdb::duckdb(), db_path)
+
+# Get and print table counts
+works_count <- dbGetQuery(con, "SELECT COUNT(*) as cnt FROM works")$cnt
+message(paste("Works:", works_count))
+
+authors_count <- dbGetQuery(con, "SELECT COUNT(*) as cnt FROM authors")$cnt
+message(paste("Authors:", authors_count))
+
+institutions_count <- dbGetQuery(con, "SELECT COUNT(*) as cnt FROM institutions")$cnt
+message(paste("Institutions:", institutions_count))
+
+work_authors_count <- dbGetQuery(con, "SELECT COUNT(*) as cnt FROM work_authors")$cnt
+message(paste("Work-Authors:", work_authors_count))
+
+work_institutions_count <- dbGetQuery(con, "SELECT COUNT(*) as cnt FROM work_institutions")$cnt
+message(paste("Work-Institutions:", work_institutions_count))
+
+work_topics_count <- dbGetQuery(con, "SELECT COUNT(*) as cnt FROM work_topics")$cnt
+message(paste("Work-Topics:", work_topics_count))
 
 dbDisconnect(con)
+
+
+# Using R's built-in compression (works everywhere)
+compress_with_r <- function(db_path) {
+  output_path <- paste0(db_path, ".gz")
+  
+  # Read in chunks to handle large files
+  con_in <- file(db_path, "rb")
+  con_out <- gzfile(output_path, "wb", compression = 9)
+  
+  repeat {
+    chunk <- readBin(con_in, "raw", 1024^2)  # 1MB chunks
+    if (length(chunk) == 0) break
+    writeBin(chunk, con_out)
+  }
+  
+  close(con_in)
+  close(con_out)
+  
+  cat("Compressed to:", output_path, "\n")
+}
+
+# Usage
+compress_with_r(db_path)	

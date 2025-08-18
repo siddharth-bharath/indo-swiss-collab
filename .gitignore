@@ -18,3 +18,5 @@ prep-tables/
 plots/
 .sqlite
 SBI_Documents/
+.duckdb
+.duckdb.gz
