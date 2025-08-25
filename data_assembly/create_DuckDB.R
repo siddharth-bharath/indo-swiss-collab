@@ -702,6 +702,51 @@ message(paste("Work-Institutions:", work_institutions_count))
 work_topics_count <- dbGetQuery(con, "SELECT COUNT(*) as cnt FROM work_topics")$cnt
 message(paste("Work-Topics:", work_topics_count))
 
+{# Authors per work
+dbGetQuery(con, "SELECT AVG(author_count) as avg_authors, MAX(author_count) as max_authors FROM (SELECT work_id, COUNT(*) as author_count FROM work_authors GROUP BY work_id)")
+
+# Institutions per work
+dbGetQuery(con, "SELECT AVG(inst_count) as avg_institutions, MAX(inst_count) as max_institutions FROM (SELECT work_id, COUNT(*) as inst_count FROM work_institutions GROUP BY work_id)")
+
+# Works per author
+dbGetQuery(con, "SELECT AVG(works_count) as avg_works_per_author, MAX(works_count) as max_works FROM authors")
+
+# Topics per work
+dbGetQuery(con, "SELECT AVG(topic_count) as avg_topics, MAX(topic_count) as max_topics FROM (SELECT work_id, COUNT(*) as topic_count FROM work_topics GROUP BY work_id)")
+}
+
+# Abstract coverage
+dbGetQuery(con, "SELECT COUNT(*) as with_abstract, COUNT(*)*100.0/(SELECT COUNT(*) FROM works) as pct FROM works WHERE abstract IS NOT NULL")
+
+# DOI coverage
+dbGetQuery(con, "SELECT COUNT(*) as with_doi, COUNT(*)*100.0/(SELECT COUNT(*) FROM works) as pct FROM works WHERE doi IS NOT NULL")
+
+# ORCID coverage
+dbGetQuery(con, "SELECT COUNT(*) as with_orcid, COUNT(*)*100.0/(SELECT COUNT(*) FROM authors) as pct FROM authors WHERE orcid IS NOT NULL")
+
+# Collaboration status distribution
+dbGetQuery(con, "SELECT collab_status, COUNT(*) as n_authors, COUNT(*)*100.0/(SELECT COUNT(*) FROM authors) as pct FROM authors GROUP BY collab_status")
+
+# Topic hierarchy counts (already in script)
+dbGetQuery(con, "SELECT COUNT(*) FROM domains")
+dbGetQuery(con, "SELECT COUNT(*) FROM fields") 
+dbGetQuery(con, "SELECT COUNT(*) FROM subfields")
+dbGetQuery(con, "SELECT COUNT(*) FROM topics")
+
+# Top research domains for Indo-Swiss collaborations
+dbGetQuery(con, "
+SELECT d.display_name, COUNT(DISTINCT w.work_id) as n_works
+FROM indo_swiss_works w
+JOIN work_topics wt ON w.work_id = wt.work_id
+JOIN topics t ON wt.topic_id = t.topic_id
+JOIN subfields s ON t.subfield_id = s.subfield_id
+JOIN fields f ON s.field_id = f.field_id
+JOIN domains d ON f.domain_id = d.domain_id
+GROUP BY d.display_name
+ORDER BY n_works DESC
+LIMIT 5
+")
+
 dbDisconnect(con)
 
 
