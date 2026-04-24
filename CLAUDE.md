@@ -73,9 +73,17 @@ Interim parquets (machine-local, not git-tracked) go under `ingestion/interim/`.
 
 **Orchestrator pattern:** For non-trivial refactor work, Claude acts as architect/orchestrator and delegates implementation tasks to Sonnet/Opus subagents (`Agent` tool with `subagent_type=general-purpose`). The orchestrator reviews each subagent's output against the R reference implementation before moving on.
 
+**Verify subagent output before trusting it.** Subagents on this project have repeatedly fabricated verification results — claiming they ran curl/pytest/etc. when they didn't, or producing outputs that passed their own sanity checks while having real correctness bugs (wrong column semantics, missing dedup, silent row-drops). The orchestrator must re-run the critical checks itself: boot the app, query the DB, count DISTINCT things, check PK uniqueness. Read the code the subagent actually wrote, not just its report. Don't dispatch a second subagent to verify the first — validate yourself, then dispatch the next substantive task.
+
 **Subagents must not commit to git.** Only the human user decides when and how to commit. Subagent prompts must include an explicit "do not run `git commit`, `git add`, `git push`, or any other git state-modifying command" line. The same rule applies to the orchestrator: never commit without an explicit request from the user.
 
-**Parity-test gate:** No Python script is considered "done" until its output parquet has been diff'd against the R-produced parquet for the same inputs. Row counts must match exactly; schemas must match. Spot-check known values (ETH Zurich → 3,448 publications; TIFR → 2,553; European Org for Nuclear Research → 2,802).
+**Parity-test gate:** No Python script is considered "done" until its output parquet has been diff'd against the R-produced parquet for the same inputs. Row counts must match exactly; schemas must match. Spot-check known values (ETH Zurich → 3,448 publications; TIFR → 2,553; European Org for Nuclear Research → 2,802). Same rule for refactors of existing code more broadly — **parity first, enrichments second**; don't bundle feature additions into a stack-swap.
+
+**Stack defaults for new web work:** FastAPI (not Flask) + Fly.io (not DigitalOcean). Both chosen for alignment with the separate `isrc-intelligence` repo and Siddharth's existing experience from the malleswaram-corporator-2026 project. Use Jinja2Templates for server-rendered HTML; volume-mounted data rather than baking large files into container images.
+
+**Communication style:** Siddharth's terse command-style messages ("do A", "go with fastAPI", "go ahead and push") mean the decision is made — don't re-explain the tradeoffs or offer alternatives. Save long explanations for when he's asking a genuine question.
+
+**Write memory to this CLAUDE.md, not to the machine-local `~/.claude/projects/.../memory/` directory.** Machine-local memory doesn't sync across the Ubuntu laptop and Windows desktop; git-tracked context does (the repo lives inside a Dropbox-synced folder). If something is durable project context, it belongs here; otherwise it probably doesn't need to be persisted at all.
 
 **Do not touch without discussion:**
 - Existing parquets in `Data/` — they are the trusted baseline.
@@ -87,6 +95,7 @@ Interim parquets (machine-local, not git-tracked) go under `ingestion/interim/`.
 
 - `/home/siddharth/Documents/Swissnex/ISRD/metadata-lag-study/assembly/` (Ubuntu) — cleaned 3-script R template from late-2025 that shaped the `ingestion/` layout.
 - `malleswaram-corporator-election-2026` — prior Flask-app collaboration Siddharth and Claude Code worked on; reference for UI patterns when the search-app rewrite happens.
+- **`siddharth-bharath/isrc-intelligence`** (private GitHub repo) — Phase 2 analytics/intelligence platform. Semantic search (BAAI/bge-base-en-v1.5 → ChromaDB) + composable Layer 0 subsetting API (`semantic_search`, `filter_by_topic/time/institution/citation_count`, AND/OR/NOT combine) + in-progress Layer 1 aggregation + planned Layer 2 patterns. Intended delivery: FastAPI web app or MCP server. Uses the same `indo_swiss_research.duckdb` as source of truth but is its own deployable, developed primarily on the Windows desktop (where the ChromaDB and GPU live). Use `gh api` to fetch contents (private; WebFetch fails). For Phase D / intelligence-UI work, switch to Windows desktop and that repo, not this one.
 - OpenAlex API docs: https://docs.openalex.org/
 
 ## Dates
