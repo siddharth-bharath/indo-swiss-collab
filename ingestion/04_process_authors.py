@@ -281,43 +281,41 @@ def build_authors_summary(flat: pl.DataFrame) -> pl.DataFrame:
     )
     author_summary = author_summary.merge(country_work_counts, on="author_id", how="left")
 
-    # Collab status: Joint, Both, IN, CH, None
-    # Joint: author has ≥1 work where both IN and CH appear in their own author_countries
-    # Both: author has IN and CH affiliations but never on same work
-    # IN: IN only
-    # CH: CH only
-    # None: neither
-    collab_status = []
-    for author_id in author_summary["author_id"]:
-        author_rows = df[df["author_id"] == author_id]
-        has_joint = False
-        has_IN = False
-        has_CH = False
+    # collab_status — single pass via vectorized flags per (author, work) row,
+    # then groupby. Joint: author had both IN and CH on their own affiliations
+    # in the same work. Both: IN and CH across different works, never together.
+    # IN / CH: single-country. None: neither.
+    ac = df["author_countries"].fillna("")
+    has_IN_row = ac.str.contains(r"\bIN\b", regex=True)
+    has_CH_row = ac.str.contains(r"\bCH\b", regex=True)
+    per_row = pd.DataFrame({
+        "author_id": df["author_id"],
+        "has_IN": has_IN_row,
+        "has_CH": has_CH_row,
+        "joint_row": has_IN_row & has_CH_row,
+    })
+    flags = per_row.groupby("author_id").agg(
+        has_joint=("joint_row", "any"),
+        has_IN=("has_IN", "any"),
+        has_CH=("has_CH", "any"),
+    ).reset_index()
 
-        for _, row in author_rows.iterrows():
-            countries = row["author_countries"]
-            if countries:
-                if "IN" in countries.split(", "):
-                    has_IN = True
-                if "CH" in countries.split(", "):
-                    has_CH = True
-                if "IN" in countries.split(", ") and "CH" in countries.split(", "):
-                    has_joint = True
+    def _status(row):
+        if row["has_joint"]:
+            return "Joint"
+        if row["has_IN"] and row["has_CH"]:
+            return "Both"
+        if row["has_IN"]:
+            return "IN"
+        if row["has_CH"]:
+            return "CH"
+        return "None"
 
-        if has_joint:
-            status = "Joint"
-        elif has_IN and has_CH:
-            status = "Both"
-        elif has_IN:
-            status = "IN"
-        elif has_CH:
-            status = "CH"
-        else:
-            status = "None"
-
-        collab_status.append(status)
-
-    author_summary["collab_status"] = collab_status
+    flags["collab_status"] = flags.apply(_status, axis=1)
+    author_summary = author_summary.merge(
+        flags[["author_id", "collab_status"]], on="author_id", how="left"
+    )
+    author_summary["collab_status"] = author_summary["collab_status"].fillna("None")
     author_summary["has_india_swiss_collab"] = author_summary["collab_status"] == "Joint"
 
     return pl.from_pandas(author_summary)
@@ -369,62 +367,67 @@ def build_work_institution_links(flat: pl.DataFrame) -> pl.DataFrame:
     return result
 
 
-def build_institutional_in_ch(work_inst_links: pl.DataFrame, flat: pl.DataFrame) -> pl.DataFrame:
-    """Build institutional_relationships_IN_CH: IN+CH institutions with metrics.
+def build_institutional_in_ch(flat: pl.DataFrame) -> pl.DataFrame:
+    """Build institutional_relationships_IN_CH with per-institution author counts
+    derived from each author's own affiliations (not all authors on co-authored works)."""
+    # Explode the affiliations JSON to one row per (work_id, author_id, affiliation).
+    records = []
+    for row in flat.select(["work_id", "author_id", "display_name", "affiliations"]).to_dicts():
+        aff_json = row["affiliations"]
+        if not aff_json:
+            continue
+        try:
+            affs = json.loads(aff_json)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        for aff in affs:
+            if not isinstance(aff, dict):
+                continue
+            cc = aff.get("country_code")
+            if cc not in ("IN", "CH"):
+                continue
+            inst_id = aff.get("inst_id")
+            if not inst_id:
+                continue
+            records.append({
+                "inst_id": inst_id,
+                "institution_name": aff.get("display_name"),
+                "country_code": cc,
+                "ror": aff.get("ror"),
+                "work_id": row["work_id"],
+                "author_id": row["author_id"],
+                "display_name": row["display_name"],
+            })
 
-    Filters to IN and CH countries, counts publications, unique authors, and author names.
+    if not records:
+        return pl.DataFrame({
+            "inst_id": pl.Series(dtype=pl.String),
+            "institution_name": pl.Series(dtype=pl.String),
+            "country_code": pl.Series(dtype=pl.String),
+            "ror": pl.Series(dtype=pl.String),
+            "work_ids": pl.Series(dtype=pl.String),
+            "n_publications": pl.Series(dtype=pl.Int64),
+            "n_authors": pl.Series(dtype=pl.Int64),
+            "author_names": pl.Series(dtype=pl.String),
+        })
 
-    Returns:
-        DataFrame with columns: inst_id, institution_name, country_code, ror, work_ids,
-        n_publications, n_authors, author_names.
-    """
-
-    # Filter to IN and CH
-    in_ch = work_inst_links.filter(pl.col("country_code").is_in(["IN", "CH"]))
-
-    # Get per-institution metrics
-    agg_df = (
-        in_ch.group_by("inst_id", "institution_name", "country_code", "ror")
-        .agg(
-            work_ids=pl.col("work_id").unique(),
-            n_publications=pl.col("work_id").n_unique(),
-        )
-        .with_columns(
-            work_ids=pl.col("work_ids").list.join("; ")
-        )
+    exploded = pl.DataFrame(records)
+    agg = exploded.group_by("inst_id").agg(
+        institution_name=pl.col("institution_name").first(),
+        country_code=pl.col("country_code").first(),
+        ror=pl.col("ror").first(),
+        work_ids=pl.col("work_id").unique().sort(),
+        n_publications=pl.col("work_id").n_unique(),
+        n_authors=pl.col("author_id").n_unique(),
+        author_names=pl.col("display_name").drop_nulls().unique().sort(),
+    ).with_columns(
+        work_ids=pl.col("work_ids").list.join("; "),
+        author_names=pl.col("author_names").list.join("; "),
     )
-
-    # Get author counts and names per institution
-    # From flat: for each work_id in institution, get unique authors
-    flat_for_auth = flat.select(["work_id", "author_id", "display_name"])
-
-    # Build author mapping
-    auth_agg = (
-        in_ch.select("inst_id", "work_id")
-        .join(flat_for_auth, on="work_id")
-        .group_by("inst_id")
-        .agg(
-            n_authors=pl.col("author_id").n_unique(),
-            author_names=pl.col("display_name").unique(),
-        )
-        .with_columns(
-            author_names=pl.col("author_names").list.join("; ")
-        )
-    )
-
-    result = agg_df.join(auth_agg, on="inst_id", how="left")
-    return result.select(
-        [
-            "inst_id",
-            "institution_name",
-            "country_code",
-            "ror",
-            "work_ids",
-            "n_publications",
-            "n_authors",
-            "author_names",
-        ]
-    )
+    return agg.select([
+        "inst_id", "institution_name", "country_code", "ror",
+        "work_ids", "n_publications", "n_authors", "author_names",
+    ]).sort("inst_id")
 
 
 def write_institutional_xlsx(df: pl.DataFrame, output_path: Path) -> None:
@@ -470,7 +473,7 @@ def main(publications_path: Path | None = None) -> None:
     print(f"  Wrote {len(work_inst):,} rows to {work_inst_path.name}")
 
     print("\nBuilding institutional_relationships_IN_CH...")
-    inst_in_ch = build_institutional_in_ch(work_inst, flat)
+    inst_in_ch = build_institutional_in_ch(flat)
     inst_path = OUTPUT_DIR / "institutional_relationships_IN_CH.parquet"
     inst_in_ch.write_parquet(inst_path)
     xlsx_path = OUTPUT_DIR / "institutional_relationships_IN_CH.xlsx"
