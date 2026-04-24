@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - Indo-Swiss Research Publications Database</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}"></head>
+<body>
+    <img class="background-image" src="{{ url_for('static', path='images/background.png') }}" alt="Background">
+
+    <header class="header">
+        <h1 class="header-title">Indo-Swiss Research Publication Database</h1>
+        <div class="home-button">
+            <a href="{{ url_for('index') }}">Home</a>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="backdrop"></div>
+
+        <div class="content-container">
+            <div class="title-section">
+                <h2 class="main-title">Indo-Swiss Research Collaboration Database - Phase 1</h2>
+            </div>
+
+            <div class="authors-section">
+                <p class="authors">Siddharth Bharath, Pranshu Jaiswal, Lena Robra, and Manfred Max Bergman</p>
+            </div>
+
+            <div class="content-section">
+                <div class="content-text">
+                    <p>
+                        This project, conducted from February to June 2025, has successfully created a comprehensive database of co-authored publications between India and Switzerland from 2000 to 2024. The aim was to understand the scope and nature of joint research efforts, providing valuable insights for researchers, institutions, and policymakers.
+                    </p>
+
+                    <p>
+                        We gathered information on co-authored academic publications from three major international databases: <strong>Scopus</strong> (from Elsevier), <strong>Web of Science</strong> (from Clarivate) and <strong>OpenAlex</strong> (from OurResearch). This involved identifying papers where researchers affiliated with institutions in both India and Switzerland worked together. After careful processing to ensure accuracy and remove duplicates, we compiled a core dataset of <strong>22,063 unique jointly authored publications</strong>.
+                    </p>
+
+                    <h3>Key outcomes of this first phase include:</h3>
+
+                    <div class="outcomes-list">
+                        <div class="outcome-item">
+                            <h4>A Foundational Database:</h4>
+                            <p>A structured collection of these Indo-Swiss collaborative publications, detailing authors, institutions, and publication specifics.</p>
+                        </div>
+
+                        <div class="outcome-item">
+                            <h4>Identification of Collaborators:</h4>
+                            <p>The database helps pinpoint key institutions from both countries involved in these joint efforts.</p>
+                        </div>
+
+                        <div class="outcome-item">
+                            <h4>Standardisation of Swiss Institutions:</h4>
+                            <p>Efforts were made to accurately identify Swiss institutions, including developing an AI-assisted method to match them against a reference list of Swiss research organisations, informed by SNSF data. Work to standardise Indian institutions is ongoing.</p>
+                        </div>
+
+                        <div class="outcome-item">
+                            <h4>A Searchable Online Tool:</h4>
+                            <p>A user-friendly website (currently in a beta testing phase) has been developed, allowing users to easily search and explore these research collaborations. The code for the project is publicly available on GitHub.</p>
+                        </div>
+                    </div>
+
+                    <p>
+                        This foundational work paves the way for deeper analyses of research trends, thematic areas of collaboration, and the overall impact of Indo-Swiss scientific cooperation. It provides a solid basis for future research, policy decisions, and fostering further collaboration between the two nations.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', path='js/script.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+pytest>=7
+beautifulsoup4>=4.12
+httpx>=0.25
+flask>=3
+pandas>=2
+pyarrow
+duckdb

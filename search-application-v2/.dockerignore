@@ -1,0 +1,13 @@
+dev_data/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+scripts/
+tests/
+*.md
+.git/
+.gitignore
+fly.toml
+deploy/
